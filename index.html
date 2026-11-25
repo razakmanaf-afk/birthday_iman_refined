@@ -513,16 +513,20 @@
 
         /* Gallery */
         .gallery {
-            columns: 2;
-            column-gap: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 22px 16px;
         }
-        @media (min-width: 820px) { .gallery { columns: 3; column-gap: 26px; } }
 
         .polaroid {
-            break-inside: avoid;
-            display: inline-block;
-            width: 100%;
-            margin-bottom: 22px;
+            position: relative;
+            flex: 0 0 calc((100% - 16px) / 2);
+            margin: 0;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            will-change: transform;
             background: #fffaf3;
             padding: 10px 10px 14px;
             border-radius: 4px;
@@ -535,7 +539,13 @@
         }
         .polaroid.reveal { transform: translateY(40px) rotate(var(--r, 0deg)); }
         .polaroid.reveal.in { transform: rotate(var(--r, 0deg)); }
-        .polaroid:hover { transform: rotate(0deg) scale(1.04) !important; box-shadow: 0 25px 55px rgba(232, 106, 138, 0.35); z-index: 2; position: relative; }
+        @media (min-width: 820px) {
+            .gallery { gap: 26px; }
+            .polaroid { flex-basis: calc((100% - 52px) / 3); }
+        }
+        @media (hover: hover) {
+            .polaroid:hover { transform: rotate(0deg) scale(1.04) !important; box-shadow: 0 25px 55px rgba(232, 106, 138, 0.35); z-index: 2; }
+        }
         .polaroid img {
             width: 100%;
             display: block;
@@ -1287,7 +1297,7 @@
                 fig.className = 'polaroid reveal';
                 fig.style.setProperty('--r', ((i % 2 ? 1 : -1) * (1 + Math.random() * 2.5)).toFixed(1) + 'deg');
                 const img = document.createElement('img');
-                img.src = p.src; img.alt = p.cap; img.loading = 'lazy';
+                img.src = p.src; img.alt = p.cap; img.decoding = 'async';
                 const cap = document.createElement('figcaption');
                 cap.textContent = p.cap;
                 fig.append(img, cap);
@@ -1296,11 +1306,27 @@
             });
         })();
 
+        // Preload all photos so switching in the lightbox never shows a blank/old frame
+        const PRELOADED = PHOTOS.map((p) => { const im = new Image(); im.src = p.src; return im; });
+        let lbToken = 0;
         function showLb(i) {
             lbIndex = (i + PHOTOS.length) % PHOTOS.length;
-            $('lbImg').src = PHOTOS[lbIndex].src;
-            $('lbImg').alt = PHOTOS[lbIndex].cap;
-            $('lbCap').textContent = PHOTOS[lbIndex].cap;
+            const p = PHOTOS[lbIndex];
+            const img = $('lbImg');
+            const token = ++lbToken;
+            const swap = () => {
+                if (token !== lbToken) return;
+                img.src = p.src;
+                img.alt = p.cap;
+                $('lbCap').textContent = p.cap;
+                img.style.opacity = '1';
+            };
+            if (!$('lightbox').classList.contains('show')) { swap(); return; }
+            img.style.opacity = '0';
+            const pre = PRELOADED[lbIndex];
+            const ready = pre.complete ? Promise.resolve() : new Promise((r) => { pre.onload = pre.onerror = r; });
+            const decoded = ready.then(() => (pre.decode ? pre.decode().catch(() => {}) : null));
+            Promise.all([decoded, new Promise((r) => setTimeout(r, 200))]).then(swap);
         }
         function openLightbox(i) { showLb(i); $('lightbox').classList.add('show'); document.body.classList.add('locked'); }
         function closeLightbox() { $('lightbox').classList.remove('show'); document.body.classList.remove('locked'); }
